@@ -1,0 +1,423 @@
+:root {
+  /* Mission Control / Ground Station Industrial Palette */
+  --gcs-bg: #090d12;
+  --gcs-surface: #111720;
+  --gcs-panel: #161e2a;
+  --gcs-panel-hover: #1c2635;
+  --gcs-border: #232f40;
+  --gcs-border-active: #3b506c;
+  
+  --text-main: #e6edf3;
+  --text-dim: #8b949e;
+  --text-bright: #ffffff;
+  
+  --flight-green: #2ea043;
+  --flight-amber: #d29922;
+  --flight-red: #f85149;
+  --flight-blue: #388bfd;
+  --flight-cyan: #39c5cf;
+
+  --field-bg: #141c14;
+  --field-soil: #1c2317;
+  --field-grid: rgba(46, 160, 67, 0.08);
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-telemetry: "JetBrains Mono", "SF Mono", Consolas, monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--gcs-bg);
+  color: var(--text-main);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* GCS Top Control Header */
+.gcs-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 1.5rem;
+  background: var(--gcs-surface);
+  border-bottom: 1px solid var(--gcs-border);
+  font-size: 0.85rem;
+}
+
+.gcs-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.gcs-logo-badge {
+  font-family: var(--font-telemetry);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  background: #1f2937;
+  border: 1px solid var(--gcs-border);
+  color: var(--flight-cyan);
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.gcs-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  letter-spacing: -0.01em;
+}
+
+.gcs-subtitle {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+  font-weight: 400;
+}
+
+.gcs-telemetry-pill {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pill-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-telemetry);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.pill-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--flight-green);
+}
+
+.pill-indicator.active {
+  box-shadow: 0 0 6px var(--flight-green);
+}
+
+.pill-indicator.warning {
+  background-color: var(--flight-amber);
+}
+
+/* Tactical Main Grid */
+.gcs-workspace {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  flex: 1;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .gcs-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Radar / Canvas Viewport */
+.tactical-display {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.viewport-frame {
+  position: relative;
+  background: var(--gcs-panel);
+  border: 1px solid var(--gcs-border);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.viewport-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.85rem;
+  background: rgba(17, 23, 32, 0.9);
+  border-bottom: 1px solid var(--gcs-border);
+  font-family: var(--font-telemetry);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.canvas-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--field-bg);
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Control & Telemetry Deck */
+.gcs-deck {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.deck-panel {
+  background: var(--gcs-panel);
+  border: 1px solid var(--gcs-border);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+}
+
+.panel-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--gcs-border);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* Primary Telemetry Readout */
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.telemetry-cell {
+  background: var(--gcs-surface);
+  border: 1px solid var(--gcs-border);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+}
+
+.cell-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+
+.cell-val {
+  font-family: var(--font-telemetry);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.cell-val.positive {
+  color: var(--flight-green);
+}
+
+.cell-val.warning {
+  color: var(--flight-amber);
+}
+
+.cell-val.alert {
+  color: var(--flight-red);
+}
+
+/* Battery Bar Gauge */
+.battery-gauge {
+  background: var(--gcs-surface);
+  border: 1px solid var(--gcs-border);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.gauge-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-family: var(--font-telemetry);
+  margin-bottom: 0.35rem;
+}
+
+.gauge-track {
+  height: 8px;
+  background: #1a2230;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.gauge-level {
+  height: 100%;
+  transition: width 0.2s linear, background-color 0.3s;
+}
+
+/* Real-world Flight Operations Buttons */
+.flight-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.btn-gcs {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.55rem 0.85rem;
+  border-radius: 4px;
+  border: 1px solid var(--gcs-border);
+  background: var(--gcs-surface);
+  color: var(--text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: all 0.15s ease;
+}
+
+.btn-gcs:hover {
+  background: var(--gcs-panel-hover);
+  border-color: var(--gcs-border-active);
+}
+
+.btn-gcs.primary {
+  background: #1f4228;
+  border-color: #2ea043;
+  color: #3fb950;
+}
+
+.btn-gcs.primary:hover {
+  background: #235332;
+  border-color: #3fb950;
+}
+
+.btn-gcs.danger {
+  background: #391c1f;
+  border-color: #f85149;
+  color: #ff7b72;
+}
+
+.btn-gcs.danger:hover {
+  background: #4a2125;
+}
+
+/* Flight Mode Selector */
+.flight-mode-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--gcs-surface);
+  border: 1px solid var(--gcs-border);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.mode-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.45rem;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+
+.mode-tab.active {
+  background: var(--gcs-panel);
+  color: var(--flight-cyan);
+  border: 1px solid var(--gcs-border-active);
+}
+
+/* Operational Feed / Event Log */
+.event-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 140px;
+  overflow-y: auto;
+  font-family: var(--font-telemetry);
+  font-size: 0.72rem;
+}
+
+.feed-line {
+  display: flex;
+  gap: 0.5rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
+
+.feed-time {
+  color: var(--gcs-border-active);
+}
+
+.feed-msg {
+  color: var(--text-main);
+}
+
+.feed-msg.alert {
+  color: var(--flight-amber);
+}
+
+.feed-msg.success {
+  color: var(--flight-green);
+}
+
+/* Manual Key Control Guide */
+.key-guide {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  font-family: var(--font-telemetry);
+  font-size: 0.68rem;
+  text-align: center;
+  margin-top: 0.4rem;
+}
+
+.key-box {
+  background: var(--gcs-surface);
+  border: 1px solid var(--gcs-border);
+  padding: 0.3rem 0;
+  border-radius: 3px;
+  color: var(--text-dim);
+}
+
+.key-box.active {
+  border-color: var(--flight-cyan);
+  color: var(--flight-cyan);
+}

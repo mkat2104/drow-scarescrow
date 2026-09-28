@@ -225,3 +225,8 @@ __marimo__/
 
 # Intermediate checkpoints (keep models/best.pth)
 models/checkpoint_ep*.pth
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/package-lock.json
