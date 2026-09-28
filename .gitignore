@@ -222,3 +222,6 @@ __marimo__/
 
 # Documents
 *.docx
+
+# Intermediate checkpoints (keep models/best.pth)
+models/checkpoint_ep*.pth
