@@ -23,6 +23,8 @@ class EnvConfig:
     reward_step:         float =  -0.1   # Time penalty per step
     reward_low_energy:   float =  -2.0   # Penalty when energy < 20%
     reward_out_of_energy: float = -50.0  # Terminal penalty
+    reward_approach:     float =   0.5   # Reward per step for moving closer to nearest bird
+    reward_wall:         float =  -1.0   # Penalty per step for hugging the boundary
 
 
 class Environment:
@@ -65,6 +67,9 @@ class Environment:
         self.birds_scared_off = 0
         self.done = False
 
+        # Shaping: track previous distance to nearest bird
+        self._prev_nearest_dist: float = 0.0
+
         # Observation size
         self.obs_size = 5 + 4 * self.config.n_birds_in_state + 1
         self.n_actions = 9   # matches Drone.N_ACTIONS
@@ -100,6 +105,13 @@ class Environment:
             )
             for pos in bird_spawns
         ]
+
+        # Initialise shaping baseline
+        if self.active_birds:
+            dists = [np.linalg.norm(self.drone.position - b.position) for b in self.active_birds]
+            self._prev_nearest_dist = float(min(dists))
+        else:
+            self._prev_nearest_dist = 0.0
 
         return self._get_observation()
 
@@ -148,11 +160,27 @@ class Environment:
         # ── 3. Apply scare energy cost ───────────────────────────────
         self.drone.apply_scare_cost(n_currently_scared)
 
-        # ── 4. Step penalty and energy warnings ─────────────────────
+        # ── 4. Step penalty, energy warnings, and shaping ───────────────
         reward += self.config.reward_step
 
         if self.drone.energy_ratio < 0.2:
             reward += self.config.reward_low_energy
+
+        # Distance-based shaping: reward moving closer to nearest active bird
+        active = self.active_birds
+        if active:
+            dists = [np.linalg.norm(self.drone.position - b.position) for b in active]
+            nearest_dist = float(min(dists))
+            progress = self._prev_nearest_dist - nearest_dist  # positive = getting closer
+            reward += self.config.reward_approach * progress
+            self._prev_nearest_dist = nearest_dist
+
+        # Boundary wall penalty: penalise when drone is within 15 units of any wall
+        margin = 15.0
+        x, y = float(self.drone.position[0]), float(self.drone.position[1])
+        x_min, y_min, x_max, y_max = self.farm.bounds
+        if x < x_min + margin or x > x_max - margin or y < y_min + margin or y > y_max - margin:
+            reward += self.config.reward_wall
 
         # ── 5. Terminal conditions ───────────────────────────────────
         # All birds cleared

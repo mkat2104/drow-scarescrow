@@ -21,6 +21,7 @@ export default function App() {
   modeRef.current = mode;
   speedRef.current = speed;
 
+  const isFetchingRef = useRef(false); // guard: prevents concurrent step calls
   const prevStateRef = useRef(null);
 
   // Helper to add timestamped telemetry event
@@ -62,6 +63,9 @@ export default function App() {
   // Advance simulation one step
   const executeStep = useCallback(
     async (manualAction = null) => {
+      // Prevent overlapping requests
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
       try {
         const payload = {
           mode: modeRef.current,
@@ -110,31 +114,50 @@ export default function App() {
         prevStateRef.current = newState;
 
         if (newState.done) {
-          setIsRunning(false);
           if (newState.info?.birds_remaining === 0) {
-            addLog('Mission Success: Sector cleared of pests.', 'success');
+            addLog('Mission Success: Sector cleared. Starting new episode…', 'success');
           } else {
-            addLog('Mission Ended: Battery depleted.', 'alert');
+            addLog('Episode ended: Energy depleted. Resetting…', 'alert');
           }
+          // Auto-reset: POST /reset and continue running
+          try {
+            const resetRes = await fetch(`${API_BASE_URL}/reset`, { method: 'POST' });
+            if (resetRes.ok) {
+              const resetState = await resetRes.json();
+              setState(resetState);
+              prevStateRef.current = resetState;
+            }
+          } catch (_) { /* ignore reset errors */ }
         }
       } catch (err) {
         console.error('Step execution error:', err);
         setIsConnected(false);
+        setIsRunning(false);
+      } finally {
+        isFetchingRef.current = false;
       }
     },
     [addLog]
   );
 
-  // Simulation execution loop
+  // Simulation execution loop — uses recursive setTimeout so the next step
+  // only fires after the previous API response has been received.
   useEffect(() => {
     if (!isRunning) return;
 
-    const intervalMs = Math.max(10, Math.floor(33 / speed));
-    const timer = setInterval(() => {
-      executeStep();
-    }, intervalMs);
+    const delayMs = Math.max(50, Math.floor(250 / speed)); // 4fps at 1x, up to ~20fps at 4x
+    let timerId = null;
 
-    return () => clearInterval(timer);
+    const scheduleNext = () => {
+      if (!isRunningRef.current) return;
+      timerId = setTimeout(async () => {
+        await executeStep();
+        scheduleNext();
+      }, delayMs);
+    };
+
+    scheduleNext();
+    return () => { if (timerId) clearTimeout(timerId); };
   }, [isRunning, speed, executeStep]);
 
   // Reset simulation
@@ -155,38 +178,103 @@ export default function App() {
     }
   };
 
-  // Keyboard controls for manual pilot mode
+  // Track which keys are held for UI display
+  const [activeKeys, setActiveKeys] = useState(new Set());
+
+  // Keyboard controls — works in manual mode, also auto-switches mode on arrow/WASD
   useEffect(() => {
+    // Map single keys to drone actions
+    // Action indices: 0=stay, 1=up, 2=down, 3=left, 4=right, 5=up-left, 6=up-right, 7=down-left, 8=down-right
+    const singleKeyMap = {
+      arrowup:    'up',
+      arrowdown:  'down',
+      arrowleft:  'left',
+      arrowright: 'right',
+      w:          'up',
+      s:          'down',
+      a:          'left',
+      d:          'right',
+    };
+
+    const dirToAction = {
+      'up':         1,
+      'down':       2,
+      'left':       3,
+      'right':      4,
+      'up-left':    5,
+      'up-right':   6,
+      'down-left':  7,
+      'down-right': 8,
+    };
+
+    const heldKeys = new Set();
+    let repeatTimer = null;
+
+    const getActionFromHeld = () => {
+      const dirs = new Set([...heldKeys].map(k => singleKeyMap[k]).filter(Boolean));
+      const up    = dirs.has('up');
+      const down  = dirs.has('down');
+      const left  = dirs.has('left');
+      const right = dirs.has('right');
+
+      if (up && left)    return 5;
+      if (up && right)   return 6;
+      if (down && left)  return 7;
+      if (down && right) return 8;
+      if (up)            return 1;
+      if (down)          return 2;
+      if (left)          return 3;
+      if (right)         return 4;
+      return 0; // stay
+    };
+
+    const fireStep = () => {
+      const action = getActionFromHeld();
+      if (action !== 0) executeStep(action);
+    };
+
     const handleKeyDown = (e) => {
-      if (modeRef.current !== 'manual') return;
+      const key = e.key.toLowerCase();
+      if (!singleKeyMap[key] && key !== ' ') return;
 
-      const keyActionMap = {
-        w: 1, // Up
-        x: 2, // Down
-        s: 0, // Stay
-        a: 3, // Left
-        d: 4, // Right
-        q: 5, // Up-Left
-        e: 6, // Up-Right
-        z: 7, // Down-Left
-        c: 8, // Down-Right
-        ArrowUp: 1,
-        ArrowDown: 2,
-        ArrowLeft: 3,
-        ArrowRight: 4,
-        ' ': 0,
-      };
+      e.preventDefault();
 
-      const action = keyActionMap[e.key.toLowerCase()] ?? keyActionMap[e.key];
-      if (action !== undefined) {
-        e.preventDefault();
-        executeStep(action);
+      // Auto-switch to manual mode when a movement key is pressed
+      if (modeRef.current !== 'manual') {
+        setMode('manual');
+        modeRef.current = 'manual';
+        addLog('Switched to MANUAL control via keyboard.', '');
+      }
+
+      if (!heldKeys.has(key)) {
+        heldKeys.add(key);
+        setActiveKeys(new Set(heldKeys));
+        fireStep(); // immediate step on first press
+
+        // Repeat every 150ms while held
+        repeatTimer = setInterval(fireStep, 150);
+      }
+    };
+
+    const handleKeyUp = (e) => {
+      const key = e.key.toLowerCase();
+      heldKeys.delete(key);
+      setActiveKeys(new Set(heldKeys));
+
+      if (heldKeys.size === 0) {
+        clearInterval(repeatTimer);
+        repeatTimer = null;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [executeStep]);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      clearInterval(repeatTimer);
+    };
+  }, [executeStep, addLog]);
 
   return (
     <>
@@ -243,6 +331,7 @@ export default function App() {
               addLog(`Sim playback speed set to: ${newSpeed}x`);
             }}
             eventLogs={eventLogs}
+            activeKeys={activeKeys}
           />
         </aside>
       </main>

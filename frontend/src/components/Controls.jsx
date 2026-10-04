@@ -1,5 +1,3 @@
-import React from 'react';
-
 /**
  * Operations & Flight Control Deck Component.
  */
@@ -13,6 +11,7 @@ export default function Controls({
   speed,
   onSpeedChange,
   eventLogs = [],
+  activeKeys = new Set(),
 }) {
   return (
     <div className="deck-panel">
@@ -74,23 +73,58 @@ export default function Controls({
           </button>
         </div>
 
-        {/* Manual Keyboard Guidance */}
-        {mode === 'manual' && (
-          <div style={{ marginTop: '0.5rem' }}>
-            <div className="cell-label">KEYBOARD OVERRIDE</div>
-            <div className="key-guide">
-              <div className="key-box">Q (↖)</div>
-              <div className="key-box">W (↑)</div>
-              <div className="key-box">E (↗)</div>
-              <div className="key-box">A (←)</div>
-              <div className="key-box">S (STAY)</div>
-              <div className="key-box">D (→)</div>
-              <div className="key-box">Z (↙)</div>
-              <div className="key-box">X (↓)</div>
-              <div className="key-box">C (↘)</div>
-            </div>
+        {/* Manual Keyboard Guide — shown always, activates on first keypress */}
+        <div style={{ marginTop: '0.5rem' }}>
+          <div className="cell-label" style={{ marginBottom: '0.4rem' }}>
+            KEYBOARD OVERRIDE{mode !== 'manual' && <span style={{ color: 'var(--flight-amber)', marginLeft: '0.5rem' }}>press a key to activate</span>}
           </div>
-        )}
+
+          {/* WASD layout */}
+          <div style={{ marginBottom: '0.3rem', fontSize: '0.68rem', color: 'var(--text-dim)' }}>WASD</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 36px)', gap: '3px', marginBottom: '0.6rem' }}>
+            {[
+              { key: null,  label: '' },
+              { key: 'w',   label: '↑ W' },
+              { key: null,  label: '' },
+              { key: 'a',   label: '← A' },
+              { key: 's',   label: '↓ S' },
+              { key: 'd',   label: '→ D' },
+            ].map((k, i) => (
+              <div
+                key={i}
+                className={`key-box${k.key && activeKeys.has(k.key) ? ' active' : ''}`}
+                style={{ height: '28px', lineHeight: '28px', visibility: k.label ? 'visible' : 'hidden' }}
+              >
+                {k.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Arrow key layout */}
+          <div style={{ marginBottom: '0.3rem', fontSize: '0.68rem', color: 'var(--text-dim)' }}>ARROW KEYS</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 36px)', gap: '3px' }}>
+            {[
+              { key: null,         label: '' },
+              { key: 'arrowup',    label: '↑' },
+              { key: null,         label: '' },
+              { key: 'arrowleft',  label: '←' },
+              { key: 'arrowdown',  label: '↓' },
+              { key: 'arrowright', label: '→' },
+            ].map((k, i) => (
+              <div
+                key={i}
+                className={`key-box${k.key && activeKeys.has(k.key) ? ' active' : ''}`}
+                style={{ height: '28px', lineHeight: '28px', visibility: k.label ? 'visible' : 'hidden' }}
+              >
+                {k.label}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '0.35rem' }}>
+            Hold key to move · Diagonals: W+A, W+D, S+A, S+D
+          </div>
+        </div>
+
 
         {/* Event Log Feed */}
         <div style={{ marginTop: '0.5rem' }}>
