@@ -67,6 +67,15 @@ class Environment:
         self.birds_scared_off = 0
         self.done = False
 
+        # Mission & Tactical systems
+        self.wave = 1
+        self.crop_health = 100.0
+        self.harvest_saved = 0.0
+        self.charging_pad = np.array([400.0, 300.0], dtype=float)
+        self.dock_radius = 45.0
+        self.is_charging = False
+        self.pulse_timer = 0
+
         # Shaping: track previous distance to nearest bird
         self._prev_nearest_dist: float = 0.0
 
@@ -78,12 +87,19 @@ class Environment:
     # Gym-like interface
     # ------------------------------------------------------------------
 
-    def reset(self) -> np.ndarray:
+    def reset(self, reset_progress: bool = True) -> np.ndarray:
         """Reset environment for a new episode. Returns initial observation."""
         self.steps = 0
         self.total_reward = 0.0
         self.birds_scared_off = 0
         self.done = False
+        self.is_charging = False
+        self.pulse_timer = 0
+
+        if reset_progress:
+            self.wave = 1
+            self.crop_health = 100.0
+            self.harvest_saved = 0.0
 
         # Spawn drone at farm center
         drone_pos = self.farm.drone_spawn()
@@ -93,8 +109,9 @@ class Environment:
             config=DroneConfig(),
         )
 
-        # Spawn birds at farm edges
-        bird_spawns = self.farm.bird_spawns(self.config.n_birds)
+        # Spawn birds for current wave (scales with wave)
+        n_birds = min(3 + (self.wave - 1) * 2, 9)
+        bird_spawns = self.farm.bird_spawns(n_birds)
         self.birds = [
             Bird(
                 start_x=float(pos[0]),
@@ -136,6 +153,18 @@ class Environment:
         # ── 1. Move drone ────────────────────────────────────────────
         self.drone.step(action, self.farm.bounds)
 
+        # ── Docking & Recharging ─────────────────────────────────────
+        dist_to_pad = float(np.linalg.norm(self.drone.position - self.charging_pad))
+        if dist_to_pad <= self.dock_radius:
+            self.drone.recharge(2.0)
+            self.is_charging = True
+        else:
+            self.is_charging = False
+
+        # ── Acoustic Pulse Timer ─────────────────────────────────────
+        if self.pulse_timer > 0:
+            self.pulse_timer -= 1
+
         # ── 2. Update birds ──────────────────────────────────────────
         n_currently_scared = 0
         for bird in self.active_birds:
@@ -153,9 +182,15 @@ class Environment:
                 reward += self.config.reward_scared_off
                 bird.reward_given = True
                 self.birds_scared_off += 1
+                self.harvest_saved += 45.0
 
             if bird.is_fleeing:
                 n_currently_scared += 1
+
+        # Crop Health: Wandering birds feed on crops
+        wandering_count = len([b for b in self.birds if b.state == BirdState.WANDERING])
+        if wandering_count > 0:
+            self.crop_health = max(0.0, self.crop_health - wandering_count * 0.02)
 
         # ── 3. Apply scare energy cost ───────────────────────────────
         self.drone.apply_scare_cost(n_currently_scared)
@@ -163,7 +198,7 @@ class Environment:
         # ── 4. Step penalty, energy warnings, and shaping ───────────────
         reward += self.config.reward_step
 
-        if self.drone.energy_ratio < 0.2:
+        if self.drone.energy_ratio < 0.2 and not self.is_charging:
             reward += self.config.reward_low_energy
 
         # Distance-based shaping: reward moving closer to nearest active bird
@@ -182,14 +217,42 @@ class Environment:
         if x < x_min + margin or x > x_max - margin or y < y_min + margin or y > y_max - margin:
             reward += self.config.reward_wall
 
-        # ── 5. Terminal conditions ───────────────────────────────────
-        # All birds cleared
-        if self.birds_scared_off >= self.config.n_birds:
+        # ── 5. Wave Progression / Terminal conditions ─────────────────
+        # All birds cleared in current wave: advance wave!
+        if len(self.active_birds) == 0:
             reward += self.config.reward_all_cleared
+            self.wave += 1
+            self.harvest_saved += 120.0 + self.crop_health * 1.5
+            self.drone.recharge(25.0)  # tactical reload bonus
+
+            # Spawn next escalating wave
+            n_next_wave = min(3 + (self.wave - 1) * 2, 9)
+            bird_spawns = self.farm.bird_spawns(n_next_wave)
+            self.birds = [
+                Bird(
+                    start_x=float(pos[0]),
+                    start_y=float(pos[1]),
+                    world_bounds=self.farm.bounds,
+                    config=BirdConfig(
+                        wander_speed=min(3.5, 1.5 + (self.wave - 1) * 0.2),
+                        flee_speed=min(6.5, 4.0 + (self.wave - 1) * 0.3),
+                    ),
+                    rng=self.rng,
+                )
+                for pos in bird_spawns
+            ]
+            self.birds_scared_off = 0
+            if self.active_birds:
+                dists = [np.linalg.norm(self.drone.position - b.position) for b in self.active_birds]
+                self._prev_nearest_dist = float(min(dists))
+
+        # Terminal conditions:
+        # Crop health depleted (failure)
+        if self.crop_health <= 0:
             self.done = True
 
-        # Drone out of energy
-        if not self.drone.is_active:
+        # Drone completely out of energy and not charging
+        if not self.drone.is_active and not self.is_charging:
             reward += self.config.reward_out_of_energy
             self.done = True
 
@@ -246,6 +309,20 @@ class Environment:
     # Info / diagnostics
     # ------------------------------------------------------------------
 
+    def trigger_pulse(self):
+        """Fire sonic acoustic deterrent wave."""
+        self.pulse_timer = 10
+        pulse_radius = 160.0
+        for bird in self.active_birds:
+            d = np.linalg.norm(bird.position - self.drone.position)
+            if d <= pulse_radius:
+                bird.state = BirdState.FLEEING
+                # Give strong fleeing burst away from drone
+                away = bird.position - self.drone.position
+                norm = np.linalg.norm(away)
+                if norm > 0:
+                    bird.position = bird.position + (away / norm) * 20.0
+
     def _get_info(self) -> dict:
         return {
             "steps":            self.steps,
@@ -254,6 +331,10 @@ class Environment:
             "birds_remaining":  len(self.active_birds),
             "drone_energy":     round(self.drone.energy, 1),
             "drone_pos":        self.drone.position.tolist(),
+            "wave":             self.wave,
+            "crop_health":      round(self.crop_health, 1),
+            "harvest_saved":    round(self.harvest_saved, 2),
+            "is_charging":      self.is_charging,
         }
 
     def get_render_state(self) -> dict:
@@ -263,10 +344,11 @@ class Environment:
         """
         return {
             "drone": {
-                "x":      float(self.drone.position[0]),
-                "y":      float(self.drone.position[1]),
-                "energy": float(self.drone.energy),
-                "active": self.drone.is_active,
+                "x":           float(self.drone.position[0]),
+                "y":           float(self.drone.position[1]),
+                "energy":      float(self.drone.energy),
+                "active":      self.drone.is_active,
+                "is_charging": self.is_charging,
             },
             "birds": [
                 {
@@ -276,9 +358,22 @@ class Environment:
                 }
                 for b in self.birds
             ],
-            "obstacles": self.farm.get_obstacle_data(),
-            "info":      self._get_info(),
-            "done":      self.done,
+            "charging_station": {
+                "x":         float(self.charging_pad[0]),
+                "y":         float(self.charging_pad[1]),
+                "radius":    float(self.dock_radius),
+                "is_docked": self.is_charging,
+            },
+            "crops": {
+                "health":        round(self.crop_health, 1),
+                "harvest_saved": round(self.harvest_saved, 2),
+                "damage_rate":   round(len([b for b in self.birds if b.state == BirdState.WANDERING]) * 0.02, 3),
+            },
+            "wave":         self.wave,
+            "pulse_active": self.pulse_timer > 0,
+            "obstacles":    self.farm.get_obstacle_data(),
+            "info":         self._get_info(),
+            "done":         self.done,
         }
 
     # ------------------------------------------------------------------

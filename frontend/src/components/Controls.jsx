@@ -1,11 +1,15 @@
+import React from 'react';
+
 /**
  * Operations & Flight Control Deck Component.
+ * Industrial Ground Control Station (GCS) flight console.
  */
 export default function Controls({
   isRunning,
   onTogglePlay,
   onStep,
   onReset,
+  onPulse,
   mode,
   onModeChange,
   speed,
@@ -22,16 +26,16 @@ export default function Controls({
 
       <div className="flight-actions">
         {/* Mode Selector */}
-        <div style={{ marginBottom: '0.25rem' }}>
+        <div style={{ marginBottom: '0.35rem' }}>
           <div className="cell-label" style={{ marginBottom: '0.35rem' }}>
             CONTROL MODE
           </div>
-          <div className="flight-mode-selector">
+          <div className="flight-mode-selector" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <button
               className={`mode-tab ${mode === 'agent' ? 'active' : ''}`}
               onClick={() => onModeChange('agent')}
             >
-              AUTONOMOUS DQN
+              AUTONOMOUS
             </button>
             <button
               className={`mode-tab ${mode === 'manual' ? 'active' : ''}`}
@@ -39,25 +43,50 @@ export default function Controls({
             >
               MANUAL (PILOT)
             </button>
+            <button
+              className={`mode-tab ${mode === 'dock' ? 'active' : ''}`}
+              onClick={() => onModeChange('dock')}
+              style={{ color: mode === 'dock' ? '#7ee787' : 'inherit' }}
+            >
+              ⚡ RTB / DOCK
+            </button>
           </div>
         </div>
 
-        {/* Playback Buttons */}
+        {/* Primary Playback / Action Buttons */}
         <div className="btn-row">
           <button
             className={`btn-gcs ${isRunning ? 'danger' : 'primary'}`}
             onClick={onTogglePlay}
           >
-            {isRunning ? '⏸ PAUSE' : '▶ LAUNCH / RESUME'}
+            {isRunning ? '⏸ PAUSE PATROL' : '▶ LAUNCH / RESUME'}
           </button>
           <button className="btn-gcs" onClick={onStep} disabled={isRunning}>
             ⏭ STEP (1F)
           </button>
         </div>
 
+        {/* Tactical Tactical Actions */}
+        <div className="btn-row">
+          <button
+            className="btn-gcs"
+            onClick={onPulse}
+            style={{ borderColor: 'var(--terminal-cyan)', color: 'var(--terminal-cyan)' }}
+          >
+            🔊 SONIC PULSE (SPACE)
+          </button>
+          <button
+            className="btn-gcs"
+            onClick={() => onModeChange(mode === 'dock' ? 'agent' : 'dock')}
+            style={{ borderColor: '#7ee787', color: '#7ee787' }}
+          >
+            {mode === 'dock' ? 'CANCEL RTB' : '⚡ RECHARGE DOCK (H)'}
+          </button>
+        </div>
+
         <div className="btn-row">
           <button className="btn-gcs" onClick={onReset}>
-            🔄 RESET EPISODE
+            🔄 RESET CAMPAIGN
           </button>
 
           {/* Speed Toggle */}
@@ -73,58 +102,62 @@ export default function Controls({
           </button>
         </div>
 
-        {/* Manual Keyboard Guide — shown always, activates on first keypress */}
-        <div style={{ marginTop: '0.5rem' }}>
-          <div className="cell-label" style={{ marginBottom: '0.4rem' }}>
-            KEYBOARD OVERRIDE{mode !== 'manual' && <span style={{ color: 'var(--flight-amber)', marginLeft: '0.5rem' }}>press a key to activate</span>}
+        {/* Manual Keyboard Guide */}
+        <div style={{ marginTop: '0.45rem' }}>
+          <div className="cell-label" style={{ marginBottom: '0.35rem' }}>
+            KEYBOARD OVERRIDE
+            {mode !== 'manual' && (
+              <span style={{ color: 'var(--flight-amber)', marginLeft: '0.5rem' }}>
+                press key to pilot
+              </span>
+            )}
           </div>
 
-          {/* WASD layout */}
-          <div style={{ marginBottom: '0.3rem', fontSize: '0.68rem', color: 'var(--text-dim)' }}>WASD</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 36px)', gap: '3px', marginBottom: '0.6rem' }}>
-            {[
-              { key: null,  label: '' },
-              { key: 'w',   label: '↑ W' },
-              { key: null,  label: '' },
-              { key: 'a',   label: '← A' },
-              { key: 's',   label: '↓ S' },
-              { key: 'd',   label: '→ D' },
-            ].map((k, i) => (
-              <div
-                key={i}
-                className={`key-box${k.key && activeKeys.has(k.key) ? ' active' : ''}`}
-                style={{ height: '28px', lineHeight: '28px', visibility: k.label ? 'visible' : 'hidden' }}
-              >
-                {k.label}
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+            {/* WASD layout */}
+            <div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginBottom: '3px' }}>
+                WASD
               </div>
-            ))}
-          </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 34px)',
+                  gap: '3px',
+                }}
+              >
+                {[
+                  { key: null, label: '' },
+                  { key: 'w', label: '↑ W' },
+                  { key: null, label: '' },
+                  { key: 'a', label: '← A' },
+                  { key: 's', label: '↓ S' },
+                  { key: 'd', label: '→ D' },
+                ].map((k, i) => (
+                  <div
+                    key={i}
+                    className={`key-box${k.key && activeKeys.has(k.key) ? ' active' : ''}`}
+                    style={{
+                      height: '26px',
+                      lineHeight: '26px',
+                      visibility: k.label ? 'visible' : 'hidden',
+                    }}
+                  >
+                    {k.label}
+                  </div>
+                ))}
+              </div>
+            </div>
 
-          {/* Arrow key layout */}
-          <div style={{ marginBottom: '0.3rem', fontSize: '0.68rem', color: 'var(--text-dim)' }}>ARROW KEYS</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 36px)', gap: '3px' }}>
-            {[
-              { key: null,         label: '' },
-              { key: 'arrowup',    label: '↑' },
-              { key: null,         label: '' },
-              { key: 'arrowleft',  label: '←' },
-              { key: 'arrowdown',  label: '↓' },
-              { key: 'arrowright', label: '→' },
-            ].map((k, i) => (
-              <div
-                key={i}
-                className={`key-box${k.key && activeKeys.has(k.key) ? ' active' : ''}`}
-                style={{ height: '28px', lineHeight: '28px', visibility: k.label ? 'visible' : 'hidden' }}
-              >
-                {k.label}
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-dim)', marginTop: '0.35rem' }}>
-            Hold key to move · Diagonals: W+A, W+D, S+A, S+D
+            {/* Tactical Shortcuts */}
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', lineHeight: '1.5' }}>
+              <div><strong style={{ color: '#c9d1d9' }}>SPACE</strong>: Sonic Deterrent Pulse</div>
+              <div><strong style={{ color: '#c9d1d9' }}>H</strong>: Return to Base / Dock</div>
+              <div><strong style={{ color: '#c9d1d9' }}>Hold Keys</strong>: Continuous Flight</div>
+              <div><strong style={{ color: '#c9d1d9' }}>W+D, S+A</strong>: Diagonals</div>
+            </div>
           </div>
         </div>
-
 
         {/* Event Log Feed */}
         <div style={{ marginTop: '0.5rem' }}>

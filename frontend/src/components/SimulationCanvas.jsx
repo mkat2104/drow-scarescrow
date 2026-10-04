@@ -2,8 +2,15 @@ import React, { useRef, useEffect, useCallback } from 'react';
 
 /**
  * 2D Canvas Renderer for Drone Scarecrow Field Simulator.
- * Uses requestAnimationFrame for smooth rotor animation, 
- * and draws the latest simulation state each frame.
+ * Industrial Ground Control Station (GCS) tactical radar interface.
+ * Features:
+ * - Animated UAV rotors & heading vector
+ * - Phosphor flight path trail
+ * - Base Charging Station / Helipad with active docking aura
+ * - Crop Health overlay & damage indicators
+ * - Acoustic Deterrent Shockwave pulse
+ * - Bird species taxonomy & panic radius
+ * - Mission Wave telemetry banner
  */
 export default function SimulationCanvas({ state, farmData, mode }) {
   const canvasRef = useRef(null);
@@ -11,10 +18,21 @@ export default function SimulationCanvas({ state, farmData, mode }) {
   const farmRef = useRef(farmData);
   const modeRef = useRef(mode);
   const rotorAngleRef = useRef(0);
+  const trailRef = useRef([]);
+  const pulseRadiusRef = useRef(0);
   const rafIdRef = useRef(null);
 
-  // Keep refs in sync with latest props
-  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => {
+    stateRef.current = state;
+    // Add position to flight path trail
+    if (state?.drone?.x !== undefined) {
+      trailRef.current.push({ x: state.drone.x, y: state.drone.y });
+      if (trailRef.current.length > 50) {
+        trailRef.current.shift();
+      }
+    }
+  }, [state]);
+
   useEffect(() => { farmRef.current = farmData; }, [farmData]);
   useEffect(() => { modeRef.current = mode; }, [mode]);
 
@@ -27,31 +45,39 @@ export default function SimulationCanvas({ state, farmData, mode }) {
     const WORLD_W = 800;
     const WORLD_H = 600;
 
-    // Do NOT reset canvas.width/height here — it clears the buffer every frame.
-    // Size is set once in the setup effect below.
-
-    rotorAngleRef.current = (rotorAngleRef.current + 0.12) % (Math.PI * 2);
+    rotorAngleRef.current = (rotorAngleRef.current + 0.14) % (Math.PI * 2);
     const rotorAngle = rotorAngleRef.current;
 
     const currentState = stateRef.current;
     const currentFarm = farmRef.current;
     const currentMode = modeRef.current;
 
-    // 1. Draw Field Background & Crop Rows
-    ctx.fillStyle = '#121812';
+    const cropHealth = currentState?.crops?.health ?? 100.0;
+    const isDocked = currentState?.drone?.is_charging ?? false;
+    const wave = currentState?.wave ?? 1;
+
+    // 1. Tactical Field Grid Background
+    ctx.fillStyle = '#0d130e';
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
-    // Subtle crop furrows
-    ctx.strokeStyle = 'rgba(46, 160, 67, 0.05)';
+    // Dynamic Crop Furrows (color shifts if crops are under stress)
+    const furrowColor = cropHealth > 75 
+      ? 'rgba(46, 160, 67, 0.06)' 
+      : cropHealth > 40 
+      ? 'rgba(210, 153, 34, 0.07)' 
+      : 'rgba(248, 81, 73, 0.08)';
+
+    ctx.strokeStyle = furrowColor;
     ctx.lineWidth = 1;
-    for (let y = 20; y < WORLD_H; y += 24) {
+    for (let y = 20; y < WORLD_H; y += 22) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(WORLD_W, y);
       ctx.stroke();
     }
-    ctx.setLineDash([4, 12]);
-    ctx.strokeStyle = 'rgba(46, 160, 67, 0.04)';
+
+    ctx.setLineDash([3, 15]);
+    ctx.strokeStyle = 'rgba(57, 197, 207, 0.04)';
     for (let x = 40; x < WORLD_W; x += 80) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
@@ -60,47 +86,79 @@ export default function SimulationCanvas({ state, farmData, mode }) {
     }
     ctx.setLineDash([]);
 
-    // Field boundary
-    ctx.strokeStyle = '#233225';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(2, 2, WORLD_W - 4, WORLD_H - 4);
+    // 2. Base Helipad & Charging Station (Center [400, 300])
+    const padX = currentState?.charging_station?.x ?? 400;
+    const padY = currentState?.charging_station?.y ?? 300;
+    const padRadius = currentState?.charging_station?.radius ?? 45;
 
-    // 2. Draw Obstacles
+    ctx.save();
+    ctx.translate(padX, padY);
+
+    // Docking pad outer ring
+    ctx.strokeStyle = isDocked ? '#39c5cf' : '#274b2f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, padRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Docking pad fill
+    ctx.fillStyle = isDocked ? 'rgba(57, 197, 207, 0.08)' : 'rgba(23, 43, 27, 0.35)';
+    ctx.fill();
+
+    // H mark
+    ctx.strokeStyle = isDocked ? '#7ee787' : 'rgba(139, 148, 158, 0.4)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-10, -12); ctx.lineTo(-10, 12);
+    ctx.moveTo(10, -12);  ctx.lineTo(10, 12);
+    ctx.moveTo(-10, 0);   ctx.lineTo(10, 0);
+    ctx.stroke();
+
+    // Pad label
+    ctx.fillStyle = isDocked ? '#7ee787' : 'rgba(139, 148, 158, 0.6)';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(isDocked ? '⚡ CHARGING' : 'BASE DOCK', 0, padRadius + 12);
+    ctx.textAlign = 'left';
+
+    // Charging pulse animation
+    if (isDocked) {
+      const chargeWave = (Date.now() / 250) % 20;
+      ctx.strokeStyle = 'rgba(57, 197, 207, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, padRadius + chargeWave, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3. Draw Obstacles (Barns, Trees, Fences)
     const obstacles = currentState?.obstacles || currentFarm?.obstacles || [];
     obstacles.forEach((obs) => {
       ctx.save();
       if (obs.label === 'barn') {
-        ctx.fillStyle = '#2d1c1c';
-        ctx.strokeStyle = '#5a3535';
+        ctx.fillStyle = '#261717';
+        ctx.strokeStyle = '#5a3030';
         ctx.lineWidth = 2;
         ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
         ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
-        ctx.strokeStyle = '#7c4343';
-        ctx.beginPath();
-        ctx.moveTo(obs.x, obs.y + obs.height / 2);
-        ctx.lineTo(obs.x + obs.width, obs.y + obs.height / 2);
-        ctx.stroke();
-        ctx.fillStyle = '#a87575';
+        ctx.fillStyle = '#b36b6b';
         ctx.font = '9px monospace';
-        ctx.fillText('BARN', obs.x + 6, obs.y + 14);
+        ctx.fillText('BARN 01', obs.x + 8, obs.y + 16);
       } else if (obs.label === 'tree') {
         const cx = obs.x + obs.width / 2;
         const cy = obs.y + obs.height / 2;
         const r = obs.width / 2;
-        ctx.fillStyle = '#172b1b';
+        ctx.fillStyle = '#112415';
         ctx.beginPath();
         ctx.arc(cx, cy, r, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#274b2f';
+        ctx.strokeStyle = '#1e4024';
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.fillStyle = '#1f3824';
-        ctx.beginPath();
-        ctx.arc(cx - 3, cy - 3, r * 0.6, 0, Math.PI * 2);
-        ctx.fill();
       } else if (obs.label === 'fence') {
-        ctx.fillStyle = '#262f3a';
-        ctx.strokeStyle = '#3d4b5c';
+        ctx.fillStyle = '#1c242d';
+        ctx.strokeStyle = '#324050';
         ctx.lineWidth = 1.5;
         ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
         ctx.strokeRect(obs.x, obs.y, obs.width, obs.height);
@@ -108,7 +166,21 @@ export default function SimulationCanvas({ state, farmData, mode }) {
       ctx.restore();
     });
 
-    // 3. Draw Birds
+    // 4. Drone Flight Path Phosphor Trail
+    const trail = trailRef.current;
+    if (trail.length > 1) {
+      for (let i = 1; i < trail.length; i++) {
+        const alpha = (i / trail.length) * 0.3;
+        ctx.strokeStyle = isDocked ? `rgba(126, 231, 135, ${alpha})` : `rgba(57, 197, 207, ${alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+        ctx.lineTo(trail[i].x, trail[i].y);
+        ctx.stroke();
+      }
+    }
+
+    // 5. Draw Birds
     const birds = currentState?.birds || [];
     birds.forEach((bird, idx) => {
       const isFleeing = bird.state === 'FLEEING';
@@ -119,32 +191,34 @@ export default function SimulationCanvas({ state, farmData, mode }) {
       ctx.translate(bird.x, bird.y);
 
       if (isFleeing) {
-        ctx.strokeStyle = 'rgba(248, 81, 73, 0.5)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(248, 81, 73, 0.6)';
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([2, 3]);
         ctx.beginPath();
-        ctx.arc(0, 0, 14, 0, Math.PI * 2);
+        ctx.arc(0, 0, 16, 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
       }
 
-      // Bird chevron
-      ctx.fillStyle = isFleeing ? '#f85149' : '#c9d1d9';
+      // Bird chevron symbol
+      ctx.fillStyle = isFleeing ? '#f85149' : '#e6edf3';
       ctx.beginPath();
-      ctx.moveTo(0, -5);
-      ctx.lineTo(5, 4);
+      ctx.moveTo(0, -6);
+      ctx.lineTo(6, 5);
       ctx.lineTo(0, 2);
-      ctx.lineTo(-5, 4);
+      ctx.lineTo(-6, 5);
       ctx.closePath();
       ctx.fill();
 
+      // Threat species tag based on wave
+      const tag = wave === 1 ? `CROW-${idx + 1}` : wave === 2 ? `PGN-${idx + 1}` : `STRL-${idx + 1}`;
       ctx.fillStyle = isFleeing ? '#ffa198' : '#8b949e';
       ctx.font = '8px monospace';
-      ctx.fillText(`B${idx + 1}`, -5, -8);
+      ctx.fillText(tag, -8, -9);
       ctx.restore();
     });
 
-    // 4. Draw Drone
+    // 6. Draw Drone
     const drone = currentState?.drone;
     if (drone) {
       const dx = drone.x;
@@ -155,101 +229,130 @@ export default function SimulationCanvas({ state, farmData, mode }) {
 
       const hasFleeing = birds.some((b) => b.state === 'FLEEING');
 
-      // Scare radius
+      // Acoustic Deterrent Pulse Shockwave Animation
+      if (currentState?.pulse_active) {
+        pulseRadiusRef.current = (pulseRadiusRef.current + 6) % 160;
+        ctx.strokeStyle = 'rgba(57, 197, 207, 0.7)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, pulseRadiusRef.current, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        pulseRadiusRef.current = 0;
+      }
+
+      // Scare radius circle
       ctx.beginPath();
-      ctx.arc(0, 0, 80, 0, Math.PI * 2);
+      ctx.arc(0, 0, 85, 0, Math.PI * 2);
       ctx.strokeStyle = hasFleeing
-        ? 'rgba(46, 160, 67, 0.55)'
-        : 'rgba(57, 197, 207, 0.18)';
+        ? 'rgba(46, 160, 67, 0.6)'
+        : isDocked
+        ? 'rgba(126, 231, 135, 0.3)'
+        : 'rgba(57, 197, 207, 0.22)';
       ctx.lineWidth = 1.5;
       if (hasFleeing) ctx.setLineDash([5, 5]);
       ctx.stroke();
       ctx.setLineDash([]);
+
       ctx.fillStyle = hasFleeing
-        ? 'rgba(46, 160, 67, 0.04)'
+        ? 'rgba(46, 160, 67, 0.05)'
         : 'rgba(57, 197, 207, 0.02)';
       ctx.fill();
 
-      // Arms
+      // Cross arms
       ctx.strokeStyle = '#4b5563';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(-12, -12); ctx.lineTo(12, 12);
-      ctx.moveTo(12, -12); ctx.lineTo(-12, 12);
+      ctx.moveTo(-13, -13); ctx.lineTo(13, 13);
+      ctx.moveTo(13, -13); ctx.lineTo(-13, 13);
       ctx.stroke();
 
-      // Rotors with animation
-      [[-12, -12], [12, -12], [-12, 12], [12, 12]].forEach(([rx, ry], rIdx) => {
+      // Rotors
+      [[-13, -13], [13, -13], [-13, 13], [13, 13]].forEach(([rx, ry], rIdx) => {
         ctx.save();
         ctx.translate(rx, ry);
         ctx.rotate(rotorAngle * (rIdx % 2 === 0 ? 1 : -1));
         ctx.strokeStyle = 'rgba(156, 163, 175, 0.5)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(0, 0, 7, 0, Math.PI * 2);
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.strokeStyle = '#22d3ee';
+        ctx.strokeStyle = isDocked ? '#7ee787' : '#22d3ee';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(-6, 0); ctx.lineTo(6, 0);
+        ctx.moveTo(-7, 0); ctx.lineTo(7, 0);
         ctx.stroke();
         ctx.restore();
       });
 
       // Body pod
-      ctx.fillStyle = '#111827';
+      ctx.fillStyle = '#0b1118';
       ctx.beginPath();
-      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = drone.energy > 20 ? '#2ea043' : '#f85149';
+      ctx.strokeStyle = drone.energy > 25 ? '#2ea043' : '#f85149';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // LED
-      ctx.fillStyle = drone.active ? '#39c5cf' : '#6b7280';
+      // Status LED
+      ctx.fillStyle = isDocked ? '#7ee787' : drone.active ? '#39c5cf' : '#6b7280';
       ctx.beginPath();
-      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
       ctx.fill();
 
       // Heading vector
       ctx.strokeStyle = '#39c5cf';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(0, -9); ctx.lineTo(0, -18);
+      ctx.moveTo(0, -9); ctx.lineTo(0, -20);
       ctx.stroke();
 
       ctx.restore();
     }
 
-    // 5. Telemetry watermark
-    ctx.fillStyle = 'rgba(139, 148, 158, 0.5)';
-    ctx.font = '9px monospace';
-    ctx.fillText(`MODE: ${(currentMode || 'agent').toUpperCase()} · 800m × 600m SECTOR`, 12, 20);
+    // 7. Tactical HUD Overlay Watermark
+    ctx.fillStyle = 'rgba(139, 148, 158, 0.7)';
+    ctx.font = '10px monospace';
+    ctx.fillText(`PATROL SECTOR-04 · WAVE ${String(wave).padStart(2, '0')}`, 14, 22);
+
     if (drone) {
-      ctx.fillText(`UAV-01  [${drone.x.toFixed(0)}, ${drone.y.toFixed(0)}]  E:${drone.energy.toFixed(1)}%`, 12, 34);
+      const chargeText = isDocked ? ' [DOCK CHARGING]' : '';
+      ctx.fillText(`UAV-01 · BATTERY: ${drone.energy.toFixed(1)}%${chargeText}`, 14, 38);
     }
 
-    // Episode end banner
+    // Crop Health Indicator on top-right
+    const harvestSaved = currentState?.crops?.harvest_saved ?? 0;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = cropHealth > 70 ? '#7ee787' : cropHealth > 35 ? '#d29922' : '#f85149';
+    ctx.fillText(`CROP INTEGRITY: ${cropHealth.toFixed(1)}%`, WORLD_W - 14, 22);
+    ctx.fillStyle = '#8b949e';
+    ctx.fillText(`HARVEST PROTECTED: $${harvestSaved.toFixed(0)}`, WORLD_W - 14, 38);
+    ctx.textAlign = 'left';
+
+    // Field perimeter boundary
+    ctx.strokeStyle = '#1e3222';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, WORLD_W - 4, WORLD_H - 4);
+
+    // Episode End / Game Over banner
     if (currentState?.done) {
-      const allCleared = currentState?.info?.birds_remaining === 0;
-      ctx.fillStyle = allCleared ? 'rgba(46,160,67,0.88)' : 'rgba(248,81,73,0.88)';
-      ctx.fillRect(WORLD_W / 2 - 175, WORLD_H / 2 - 28, 350, 56);
+      const failed = cropHealth <= 0 || (drone && drone.energy <= 0);
+      ctx.fillStyle = failed ? 'rgba(248, 81, 73, 0.92)' : 'rgba(46, 160, 67, 0.92)';
+      ctx.fillRect(WORLD_W / 2 - 200, WORLD_H / 2 - 32, 400, 64);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 13px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(
-        allCleared ? '✓ MISSION COMPLETE — SECTOR SECURED' : '✕ MISSION TERMINATED — LOW BATTERY',
+        failed ? '✕ PATROL COMPROMISED — HARVEST DAMAGE / POWER LOSS' : '✓ SECTOR SECURED — ALL WAVES REPELLED',
         WORLD_W / 2,
-        WORLD_H / 2 + 6
+        WORLD_H / 2 + 4
       );
       ctx.textAlign = 'left';
     }
 
-    // Schedule next frame
     rafIdRef.current = requestAnimationFrame(draw);
   }, []);
 
-  // Set canvas size once on mount
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -258,7 +361,6 @@ export default function SimulationCanvas({ state, farmData, mode }) {
     }
   }, []);
 
-  // Start animation loop on mount, stop on unmount
   useEffect(() => {
     rafIdRef.current = requestAnimationFrame(draw);
     return () => {
@@ -270,7 +372,13 @@ export default function SimulationCanvas({ state, farmData, mode }) {
     <div className="viewport-frame">
       <div className="viewport-header">
         <span>TOP-DOWN FIELD RADAR · SECTOR-04</span>
-        <span>{stateRef.current?.drone?.active ? '● ACTIVE PATROL' : '○ STANDBY'}</span>
+        <span>
+          {stateRef.current?.drone?.is_charging
+            ? '⚡ BASE DOCKING ACTIVE'
+            : stateRef.current?.drone?.active
+            ? '● ACTIVE PATROL'
+            : '○ STANDBY'}
+        </span>
       </div>
       <div className="canvas-wrapper">
         <canvas ref={canvasRef} />

@@ -1,5 +1,6 @@
 import os
 import sys
+import numpy as np
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -72,8 +73,29 @@ class SimulationManager:
         if self.env.done:
             self.reset()
 
-        if mode == "agent" or action is None:
-            # Greedy action chosen by agent
+        # Smart RTB (Return to Base) behavior when battery is critically low
+        drone_energy = self.env.drone.energy
+        drone_pos = self.env.drone.position
+        pad_pos = self.env.charging_pad
+        dist_to_pad = float(np.linalg.norm(drone_pos - pad_pos))
+
+        if mode == "dock":
+            # Command Return to Base
+            if dist_to_pad <= self.env.dock_radius:
+                chosen_action = 0  # hover and charge
+            else:
+                dx = pad_pos[0] - drone_pos[0]
+                dy = pad_pos[1] - drone_pos[1]
+                chosen_action = self._navigate_towards(dx, dy)
+        elif (mode == "agent" or action is None) and (drone_energy < 22.0 or (self.env.is_charging and drone_energy < 90.0)):
+            # Autonomous low-battery self-preservation
+            if dist_to_pad <= self.env.dock_radius:
+                chosen_action = 0  # hover on pad to charge
+            else:
+                dx = pad_pos[0] - drone_pos[0]
+                dy = pad_pos[1] - drone_pos[1]
+                chosen_action = self._navigate_towards(dx, dy)
+        elif mode == "agent" or action is None:
             chosen_action = self.agent.select_action(self.current_obs, evaluate=True)
         else:
             chosen_action = int(action)
@@ -85,6 +107,19 @@ class SimulationManager:
         state["action_taken"] = chosen_action
         state["reward"] = reward
         return state
+
+    def _navigate_towards(self, dx: float, dy: float) -> int:
+        from backend.simulation.drone import Drone
+        best_act = 0
+        best_dot = -1.0
+        for act, delta in Drone.ACTION_DELTAS.items():
+            if act == 0: continue
+            norm = np.linalg.norm(delta)
+            dot = (delta[0]/norm) * dx + (delta[1]/norm) * dy
+            if dot > best_dot:
+                best_dot = dot
+                best_act = act
+        return best_act
 
     def load_model(self, path: str) -> bool:
         """Load weights from specified checkpoint file."""
@@ -107,7 +142,10 @@ class StepRequest(BaseModel):
         None, ge=0, le=8, description="Action index (0-8) if in manual mode"
     )
     mode: str = Field(
-        "agent", description="'agent' for autonomous AI control, 'manual' for user input"
+        "agent", description="'agent' for autonomous AI, 'manual' for user input, 'dock' for RTB"
+    )
+    pulse: bool = Field(
+        False, description="Trigger acoustic deterrent pulse wave"
     )
 
 
@@ -152,7 +190,16 @@ def step_simulation(request: Optional[StepRequest] = None):
     """Advance simulation one step with agent or manual action."""
     action = request.action if request else None
     mode = request.mode if request else "agent"
+    if request and request.pulse:
+        sim_manager.env.trigger_pulse()
     return sim_manager.step(action=action, mode=mode)
+
+
+@app.post("/pulse")
+def trigger_pulse():
+    """Trigger an acoustic deterrent shockwave pulse."""
+    sim_manager.env.trigger_pulse()
+    return sim_manager.get_state()
 
 
 @app.post("/load-model")

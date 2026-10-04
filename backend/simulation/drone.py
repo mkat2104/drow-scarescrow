@@ -6,12 +6,12 @@ from typing import Tuple
 @dataclass
 class DroneConfig:
     """Configuration parameters for the drone."""
-    max_speed: float = 5.0          # Maximum speed (units/step)
+    max_speed: float = 6.0          # Maximum speed (units/step)
     max_energy: float = 100.0       # Full battery capacity
-    energy_drain_move: float = 0.2  # Energy used per step when moving
-    energy_drain_idle: float = 0.05 # Energy used per step when stationary
-    scare_radius: float = 80.0      # Radius within which birds are scared (matches visual radar & flee_radius)
-    scare_energy_cost: float = 0.5  # Extra energy cost when actively scaring
+    energy_drain_move: float = 0.06  # Energy used per step when moving (extended patrol)
+    energy_drain_idle: float = 0.01  # Energy used per step when stationary
+    scare_radius: float = 85.0      # Radius within which birds are scared
+    scare_energy_cost: float = 0.05  # Moderate cost during active scaring
     size: float = 10.0              # Drone radius (for collision/rendering)
 
 
@@ -141,6 +141,14 @@ class Drone:
         if self.energy <= 0:
             self.is_active = False
         return cost
+
+    def recharge(self, amount: float = 2.0) -> float:
+        """Charge the drone battery (e.g. while docked at the base station)."""
+        old = self.energy
+        self.energy = min(self.config.max_energy, self.energy + amount)
+        if self.energy > 0:
+            self.is_active = True
+        return self.energy - old
 
     # ------------------------------------------------------------------
     # State for RL agent

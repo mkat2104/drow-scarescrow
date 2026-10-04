@@ -86,6 +86,16 @@ export default function App() {
 
         // Detect and log tactical events
         if (prevStateRef.current) {
+          // Wave advancement
+          if (newState.wave && newState.wave > (prevStateRef.current.wave || 1)) {
+            addLog(`★ THREAT WAVE ${prevStateRef.current.wave || 1} CLEARED! Advancing to Wave ${newState.wave} ★`, 'success');
+          }
+
+          // Docking status
+          if (newState.drone?.is_charging && !prevStateRef.current.drone?.is_charging) {
+            addLog('UAV docked on Helipad: Fast charging active.', 'success');
+          }
+
           const prevBirds = prevStateRef.current.birds || [];
           const currBirds = newState.birds || [];
 
@@ -100,26 +110,28 @@ export default function App() {
             newState.info?.birds_remaining <
             prevStateRef.current.info?.birds_remaining
           ) {
-            addLog(`Bird successfully driven out of sector!`, 'success');
+            addLog(`Bird driven outside perimeter! Harvest protected.`, 'success');
           }
 
           if (
-            newState.drone?.energy <= 20 &&
-            prevStateRef.current.drone?.energy > 20
+            newState.drone?.energy <= 22 &&
+            prevStateRef.current.drone?.energy > 22
           ) {
-            addLog(`Low battery alert: < 20% remaining`, 'alert');
+            addLog(`Low battery alert (< 22%): RTB recommended.`, 'alert');
+          }
+
+          if (
+            newState.crops?.health <= 50 &&
+            (prevStateRef.current.crops?.health || 100) > 50
+          ) {
+            addLog(`Crop integrity below 50%! Pests are destroying harvest!`, 'alert');
           }
         }
 
         prevStateRef.current = newState;
 
         if (newState.done) {
-          if (newState.info?.birds_remaining === 0) {
-            addLog('Mission Success: Sector cleared. Starting new episode…', 'success');
-          } else {
-            addLog('Episode ended: Energy depleted. Resetting…', 'alert');
-          }
-          // Auto-reset: POST /reset and continue running
+          addLog('Mission concluded: Harvest depleted or battery exhausted. Resetting sector…', 'alert');
           try {
             const resetRes = await fetch(`${API_BASE_URL}/reset`, { method: 'POST' });
             if (resetRes.ok) {
@@ -177,6 +189,20 @@ export default function App() {
       setIsConnected(false);
     }
   };
+
+  // Acoustic Deterrent Pulse
+  const handlePulse = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/pulse`, { method: 'POST' });
+      if (res.ok) {
+        const newState = await res.json();
+        setState(newState);
+        addLog('🔊 Acoustic Deterrent Pulse discharged!', 'alert');
+      }
+    } catch (err) {
+      console.error('Pulse error:', err);
+    }
+  }, [addLog]);
 
   // Track which keys are held for UI display
   const [activeKeys, setActiveKeys] = useState(new Set());
@@ -239,7 +265,25 @@ export default function App() {
 
     const handleKeyDown = (e) => {
       const key = e.key.toLowerCase();
-      if (!singleKeyMap[key] && key !== ' ') return;
+
+      // Spacebar: Sonic Deterrent Pulse
+      if (key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        handlePulse();
+        return;
+      }
+
+      // H key: Return to Base / Dock toggle
+      if (key === 'h') {
+        e.preventDefault();
+        const nextMode = modeRef.current === 'dock' ? 'agent' : 'dock';
+        setMode(nextMode);
+        modeRef.current = nextMode;
+        addLog(nextMode === 'dock' ? 'Engaging RTB (Return to Base) auto-docking sequence.' : 'Resumed autonomous patrol.', nextMode === 'dock' ? 'alert' : 'success');
+        return;
+      }
+
+      if (!singleKeyMap[key]) return;
 
       e.preventDefault();
 
@@ -324,6 +368,7 @@ export default function App() {
             onTogglePlay={() => setIsRunning(!isRunning)}
             onStep={() => executeStep()}
             onReset={handleReset}
+            onPulse={handlePulse}
             mode={mode}
             onModeChange={(newMode) => {
               setMode(newMode);
