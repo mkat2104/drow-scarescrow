@@ -196,15 +196,19 @@ export default function App() {
       d:          'right',
     };
 
+    // Canvas Y-axis is inverted: Y=0 is top, increases downward.
+    // Drone action 1 = +Y = moves DOWN on screen.
+    // Drone action 2 = -Y = moves UP on screen.
+    // So 'up' key must send action 2, 'down' key must send action 1.
     const dirToAction = {
-      'up':         1,
-      'down':       2,
+      'up':         2,  // -Y = visually up
+      'down':       1,  // +Y = visually down
       'left':       3,
       'right':      4,
-      'up-left':    5,
-      'up-right':   6,
-      'down-left':  7,
-      'down-right': 8,
+      'up-left':    7,  // -Y, -X
+      'up-right':   8,  // -Y, +X
+      'down-left':  5,  // +Y, -X
+      'down-right': 6,  // +Y, +X
     };
 
     const heldKeys = new Set();
@@ -217,14 +221,14 @@ export default function App() {
       const left  = dirs.has('left');
       const right = dirs.has('right');
 
-      if (up && left)    return 5;
-      if (up && right)   return 6;
-      if (down && left)  return 7;
-      if (down && right) return 8;
-      if (up)            return 1;
-      if (down)          return 2;
-      if (left)          return 3;
-      if (right)         return 4;
+      if (up && left)    return dirToAction['up-left'];
+      if (up && right)   return dirToAction['up-right'];
+      if (down && left)  return dirToAction['down-left'];
+      if (down && right) return dirToAction['down-right'];
+      if (up)            return dirToAction['up'];
+      if (down)          return dirToAction['down'];
+      if (left)          return dirToAction['left'];
+      if (right)         return dirToAction['right'];
       return 0; // stay
     };
 
