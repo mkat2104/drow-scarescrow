@@ -217,7 +217,7 @@ class Environment:
         w, h = self.config.world_width, self.config.world_height
 
         # Drone state (5 values)
-        drone_vec = self.drone.get_state_vector() if self.drone else np.zeros(5)
+        drone_vec = self.drone.get_state_vector(w, h) if self.drone else np.zeros(5, dtype=np.float32)
 
         # Nearest N birds (4 values each)
         active = self.active_birds

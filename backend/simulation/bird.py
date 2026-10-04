@@ -162,7 +162,8 @@ class Bird:
         """
         dx = (self.position[0] - drone_position[0]) / world_w
         dy = (self.position[1] - drone_position[1]) / world_h
-        dist = float(np.linalg.norm(self.position - drone_position))
+        max_dist = float(np.hypot(world_w, world_h))
+        dist = float(np.linalg.norm(self.position - drone_position)) / max_dist
         is_fleeing = float(self.state == BirdState.FLEEING)
 
         return np.array([dx, dy, dist, is_fleeing], dtype=np.float32)

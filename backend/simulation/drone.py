@@ -10,7 +10,7 @@ class DroneConfig:
     max_energy: float = 100.0       # Full battery capacity
     energy_drain_move: float = 0.2  # Energy used per step when moving
     energy_drain_idle: float = 0.05 # Energy used per step when stationary
-    scare_radius: float = 50.0      # Radius within which birds are scared
+    scare_radius: float = 80.0      # Radius within which birds are scared (matches visual radar & flee_radius)
     scare_energy_cost: float = 0.5  # Extra energy cost when actively scaring
     size: float = 10.0              # Drone radius (for collision/rendering)
 
@@ -146,15 +146,15 @@ class Drone:
     # State for RL agent
     # ------------------------------------------------------------------
 
-    def get_state_vector(self) -> np.ndarray:
+    def get_state_vector(self, world_w: float = 800.0, world_h: float = 600.0) -> np.ndarray:
         """
         Return a normalised state vector for the RL agent:
-            [x, y, vx, vy, energy_ratio]
+            [x_norm, y_norm, vx, vy, energy_ratio]
         All values in [0, 1] or [-1, 1] for stable training.
         """
         return np.array([
-            self.position[0],
-            self.position[1],
+            self.position[0] / world_w,
+            self.position[1] / world_h,
             self.velocity[0] / self.config.max_speed,
             self.velocity[1] / self.config.max_speed,
             self.energy / self.config.max_energy,
